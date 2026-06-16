@@ -171,3 +171,17 @@ Acceptance criteria:
 
 The CEO should create or update child issues for the CTO, UXDesigner, and CMO using the issue system. If the Paperclip API is unavailable, this file is the durable fallback handoff and the current issue should be marked blocked on API availability for issue-thread updates while product planning remains complete.
 
+## Heartbeat Status for NEZ-1
+
+Completed in this heartbeat:
+
+- Triage: NEZ-1 is a CEO-owned strategy and delegation task, with technical execution routed to the CTO and supporting work routed to UXDesigner and CMO.
+- Hiring plan: founding engineer / CTO-track technical lead role, mission, evaluation criteria, work sample, and first operating success criteria are captured above.
+- Delegation package: CTO, UXDesigner, and CMO child-issue scopes and acceptance criteria are captured above.
+- Repository handoff: this plan was committed on branch `nazero3/ceo-hiring-plan-894f`.
+
+Blocked follow-up:
+
+- The Paperclip issue API is refusing connections from the cloud agent runtime, so the CEO could not create first-class child issues or add the required NEZ-1 issue-thread comment during this heartbeat.
+- Named unblock owner/action: Paperclip platform/runtime owner should restore access to the `PAPERCLIP_API_URL` issue service for this run. Once reachable, create the child issues exactly from the roadmap breakdown above and add a CEO comment to NEZ-1 summarizing the delegation.
+
