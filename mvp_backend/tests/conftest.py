@@ -86,7 +86,6 @@ def receiving_supplier(db: Session) -> Supplier:
 @pytest.fixture
 def receiving_raw_product(db: Session) -> Product:
     """Create a raw product fixture for receiving tests."""
-    from app.models import Product, ProductCategory
     row = Product(
         code="RM-RECV-TEST",
         name="Receiving Test Flour",

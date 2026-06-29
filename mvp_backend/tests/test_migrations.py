@@ -8,7 +8,6 @@ from app import migrations
 def test_ensure_schema_creates_and_stamps_on_fresh_db(monkeypatch: pytest.MonkeyPatch):
     """On a fresh DB (no alembic_version table), create_all and stamp head are called."""
     create_all_called = []
-    stamp_called = []
 
     def fake_create_all(bind):  # noqa: ANN001
         create_all_called.append(True)
