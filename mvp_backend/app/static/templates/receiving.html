@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en" data-i18n-doctitle="recv.title">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Receiving — Baklava Factory</title>
+  <script>(function(){var l=localStorage.getItem('baklava_lang')||'en';document.documentElement.lang=l;document.documentElement.dir=l==='ar'?'rtl':'ltr';})();</script>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <header id="app-nav" class="app-nav"></header>
+
+  <main class="app-main">
+    <div class="page-header">
+      <h1 data-i18n="recv.title">Receiving</h1>
+      <p data-i18n="recv.subtitle">Record incoming goods from a supplier into warehouse inventory.</p>
+    </div>
+
+    <div class="card">
+      <form id="receiving-form">
+        <div class="grid2">
+          <div class="field">
+            <label for="supplier_id" data-i18n="common.supplier">Supplier</label>
+            <select id="supplier_id" required></select>
+          </div>
+          <div class="field">
+            <label for="product_id" data-i18n="common.product">Product</label>
+            <select id="product_id" required></select>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label for="qty_kg" data-i18n="common.qty_kg">Quantity (kg)</label>
+            <input id="qty_kg" name="qty_kg" type="number" step="0.001" min="0.001" value="10" required />
+          </div>
+          <div class="field">
+            <label for="unit_cost" data-i18n="common.unit_cost">Unit cost</label>
+            <input id="unit_cost" name="unit_cost" type="number" step="0.01" min="0.01" value="2.5" required />
+          </div>
+        </div>
+        <div class="field">
+          <label for="lot_no" data-i18n="recv.lot_no">Lot number</label>
+          <input id="lot_no" name="lot_no" type="text" value="LOT-1" />
+        </div>
+        <button type="submit" data-i18n="recv.post">Post receiving</button>
+      </form>
+      <div id="toast" class="toast"></div>
+      <div id="result" class="result-box"></div>
+    </div>
+
+    <div class="card section-gap">
+      <h2 data-i18n="recv.recent">Recent receivings</h2>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th data-i18n="common.id">ID</th>
+              <th data-i18n="common.supplier">Supplier</th>
+              <th data-i18n="common.product">Product</th>
+              <th data-i18n="common.qty_kg">Qty (kg)</th>
+              <th data-i18n="common.unit_cost">Unit cost</th>
+              <th data-i18n="common.created_at">Created</th>
+            </tr>
+          </thead>
+          <tbody id="recv-tbody">
+            <tr><td colspan="6" class="empty" data-i18n="common.loading">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="/static/js/i18n.js"></script>
+  <script src="/static/js/auth_client.js"></script>
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/components.js"></script>
+  <script src="/static/js/shell.js"></script>
+  <script>
+    BaklavaShell.initShell("receiving");
+    const C = BaklavaComponents;
+    const t = (k) => BaklavaI18n.t(k);
+    const form = document.getElementById("receiving-form");
+    const toast = document.getElementById("toast");
+    const result = document.getElementById("result");
+    const tbody = document.getElementById("recv-tbody");
+
+    async function loadOptions() {
+      try {
+        await C.populateSupplierSelect(document.getElementById("supplier_id"), {
+          selected: localStorage.getItem("baklava_last_supplier_id"),
+        });
+        await C.populateProductSelect(document.getElementById("product_id"), {
+          category: "raw",
+          selected: localStorage.getItem("baklava_last_raw_product_id"),
+        });
+      } catch (err) {
+        C.toast(toast, err.message, false);
+      }
+    }
+
+    async function loadRecent() {
+      try {
+        const rows = await BaklavaApi.get("/receivings");
+        C.renderRows(
+          tbody,
+          rows,
+          [
+            { render: (r) => C.escapeHtml(r.id) },
+            { render: (r) => C.escapeHtml(r.supplier_name || r.supplier_id) },
+            { render: (r) => C.escapeHtml(r.product_name || r.product_id) },
+            { render: (r) => C.fmtNum(r.qty_kg) },
+            { render: (r) => C.fmtMoney(r.unit_cost) },
+            { render: (r) => C.fmtDate(r.created_at) },
+          ],
+          t("recv.empty"),
+          6
+        );
+      } catch (err) {
+        C.renderRows(tbody, [], new Array(6).fill({}), err.message, 6);
+      }
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const body = {
+        supplier_id: Number(document.getElementById("supplier_id").value),
+        product_id: Number(document.getElementById("product_id").value),
+        qty_kg: Number(document.getElementById("qty_kg").value),
+        unit_cost: Number(document.getElementById("unit_cost").value),
+        lot_no: document.getElementById("lot_no").value,
+      };
+      if (!body.supplier_id || !body.product_id) {
+        C.toast(toast, t("common.required"), false);
+        return;
+      }
+      try {
+        const data = await BaklavaApi.post("/receivings", body);
+        C.toast(toast, `${t("recv.posted")} (ID ${data.id})`, true);
+        localStorage.setItem("baklava_last_supplier_id", body.supplier_id);
+        localStorage.setItem("baklava_last_raw_product_id", body.product_id);
+        C.renderResult(result, [
+          { label: t("common.id"), value: data.id },
+          { label: t("common.qty_kg"), value: C.fmtNum(data.qty_kg) },
+          { label: t("common.unit_cost"), value: C.fmtMoney(data.unit_cost) },
+          { label: t("recv.lot_no"), value: data.lot_no },
+        ]);
+        await loadRecent();
+      } catch (err) {
+        C.toast(toast, err.message, false);
+        C.clearResult(result);
+      }
+    });
+
+    loadOptions();
+    loadRecent();
+  </script>
+</body>
+</html>

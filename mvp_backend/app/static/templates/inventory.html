@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en" data-i18n-doctitle="inv.title">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Inventory — Baklava Factory</title>
+  <script>(function(){var l=localStorage.getItem('baklava_lang')||'en';document.documentElement.lang=l;document.documentElement.dir=l==='ar'?'rtl':'ltr';})();</script>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <header id="app-nav" class="app-nav"></header>
+
+  <main class="app-main wide">
+    <div class="page-header">
+      <h1 data-i18n="inv.title">Inventory</h1>
+      <p data-i18n="inv.subtitle">Stock on hand across the factory and stores, with valuation.</p>
+    </div>
+
+    <div id="kpi-grid" class="kpi-grid"></div>
+
+    <div class="card" id="adjust-card" style="display:none;">
+      <h2 data-i18n="inv.adjust_title">Inventory adjustment</h2>
+      <form id="adjust-form">
+        <div class="grid2">
+          <div class="field">
+            <label for="location_type" data-i18n="inv.location_type">Location type</label>
+            <select id="location_type" required>
+              <option value="factory" data-i18n="inv.factory">Factory</option>
+              <option value="store" data-i18n="common.store">Store</option>
+            </select>
+          </div>
+          <div class="field" id="store-field" style="display:none;">
+            <label for="location_id" data-i18n="common.store">Store</label>
+            <select id="location_id"></select>
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label for="product_id" data-i18n="common.product">Product</label>
+            <select id="product_id" required></select>
+          </div>
+          <div class="field">
+            <label for="qty_delta_kg" data-i18n="inv.qty_delta">Adjustment (+/- kg)</label>
+            <input id="qty_delta_kg" type="number" step="0.001" value="-1" required />
+          </div>
+        </div>
+        <div class="field">
+          <label for="reason" data-i18n="common.reason">Reason</label>
+          <input id="reason" type="text" minlength="3" required />
+        </div>
+        <button type="submit" data-i18n="inv.adjust">Request adjustment</button>
+      </form>
+      <div id="adjust-toast" class="toast"></div>
+    </div>
+
+    <div class="card section-gap">
+      <h2 data-i18n="inv.title">Inventory</h2>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th data-i18n="inv.location">Location</th>
+              <th data-i18n="common.product">Product</th>
+              <th data-i18n="common.qty_kg">Qty (kg)</th>
+              <th data-i18n="inv.cost_per_kg">Cost / kg</th>
+              <th data-i18n="common.value">Value</th>
+            </tr>
+          </thead>
+          <tbody id="inv-tbody">
+            <tr><td colspan="5" class="empty" data-i18n="common.loading">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="/static/js/i18n.js"></script>
+  <script src="/static/js/auth_client.js"></script>
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/components.js"></script>
+  <script src="/static/js/shell.js"></script>
+  <script>
+    BaklavaShell.initShell("inventory");
+    const C = BaklavaComponents;
+    const t = (k) => BaklavaI18n.t(k);
+    const tbody = document.getElementById("inv-tbody");
+    const kpiGrid = document.getElementById("kpi-grid");
+
+    const role = BaklavaAuth.getRole();
+    const canAdjust = ["admin", "factory_manager", "warehouse"].includes(role);
+
+    async function loadInventory() {
+      try {
+        const rows = await BaklavaApi.get("/inventory");
+        const totalValue = rows.reduce((sum, r) => sum + (r.value || 0), 0);
+        C.renderKpis(kpiGrid, [
+          { label: t("inv.total_value"), value: C.fmtMoney(totalValue), tone: "money" },
+        ]);
+        C.renderRows(
+          tbody,
+          rows,
+          [
+            { render: (r) => C.escapeHtml(r.location_name) },
+            { render: (r) => C.escapeHtml((r.product_name || r.product_id) + (r.product_code ? ` (${r.product_code})` : "")) },
+            { render: (r) => C.fmtNum(r.quantity_kg) },
+            { render: (r) => C.fmtMoney(r.weighted_cost_per_kg) },
+            { render: (r) => C.fmtMoney(r.value) },
+          ],
+          t("inv.empty"),
+          5
+        );
+      } catch (err) {
+        C.renderRows(tbody, [], new Array(5).fill({}), err.message, 5);
+      }
+    }
+
+    async function setupAdjust() {
+      if (!canAdjust) return;
+      document.getElementById("adjust-card").style.display = "";
+      const locType = document.getElementById("location_type");
+      const storeField = document.getElementById("store-field");
+      try {
+        await C.populateProductSelect(document.getElementById("product_id"), {});
+        await C.populateStoreSelect(document.getElementById("location_id"), {});
+      } catch (err) {
+        C.toast(document.getElementById("adjust-toast"), err.message, false);
+      }
+      locType.addEventListener("change", () => {
+        storeField.style.display = locType.value === "store" ? "" : "none";
+      });
+
+      document.getElementById("adjust-form").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const toast = document.getElementById("adjust-toast");
+        const isStore = locType.value === "store";
+        const body = {
+          location_type: locType.value,
+          location_id: isStore ? Number(document.getElementById("location_id").value) : 0,
+          product_id: Number(document.getElementById("product_id").value),
+          qty_delta_kg: Number(document.getElementById("qty_delta_kg").value),
+          reason: document.getElementById("reason").value.trim(),
+        };
+        if (!body.product_id || (isStore && !body.location_id)) {
+          C.toast(toast, t("common.required"), false);
+          return;
+        }
+        try {
+          const data = await BaklavaApi.post("/inventory/adjustments", body);
+          C.toast(toast, `${t("inv.adjust")}: #${data.adjustment_id} (${data.status})`, true);
+          await loadInventory();
+        } catch (err) {
+          C.toast(toast, err.message, false);
+        }
+      });
+    }
+
+    loadInventory();
+    setupAdjust();
+  </script>
+</body>
+</html>

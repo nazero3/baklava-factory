@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en" data-i18n-doctitle="login.title">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Baklava Factory</title>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body class="login-page">
+  <div class="login-card">
+    <div style="display:flex; justify-content:space-between; align-items:center;">
+      <h1 data-i18n="login.title">Baklava Factory</h1>
+      <button type="button" class="lang-btn" id="lang-btn"></button>
+    </div>
+    <p class="brand-sub" data-i18n="login.subtitle">Sign in to continue</p>
+
+    <form id="login-form">
+      <div class="field">
+        <label for="username" data-i18n="login.username">Username</label>
+        <input id="username" name="username" type="text" placeholder="admin" autocomplete="username" required />
+      </div>
+      <div class="field">
+        <label for="password" data-i18n="login.password">Password</label>
+        <input id="password" name="password" type="password" placeholder="••••••••" autocomplete="current-password" required />
+      </div>
+      <button type="submit" id="login-btn" data-i18n="login.signin">Sign in</button>
+    </form>
+
+    <div id="toast" class="toast"></div>
+  </div>
+
+  <script src="/static/js/i18n.js"></script>
+  <script src="/static/js/auth_client.js"></script>
+  <script>
+    BaklavaI18n.apply();
+    const t = (k) => BaklavaI18n.t(k);
+    document.getElementById("lang-btn").textContent = t("common.lang_toggle");
+    document.getElementById("lang-btn").addEventListener("click", () => BaklavaI18n.toggleLang());
+
+    if (BaklavaAuth.isLoggedIn()) {
+      window.location.href = "/dashboard";
+    }
+
+    const form = document.getElementById("login-form");
+    const btn = document.getElementById("login-btn");
+    const toast = document.getElementById("toast");
+
+    function showToast(msg, ok) {
+      toast.textContent = msg;
+      toast.className = "toast " + (ok ? "ok" : "err");
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const username = document.getElementById("username").value.trim();
+      const password = document.getElementById("password").value;
+
+      btn.disabled = true;
+      btn.textContent = t("login.signing_in");
+
+      try {
+        const data = await BaklavaAuth.login(username, password);
+        showToast(`${t("login.welcome")}, ${username} (${t("role." + data.role)})`, true);
+        setTimeout(() => { window.location.href = "/dashboard"; }, 400);
+      } catch (err) {
+        showToast(err.message || t("login.failed"), false);
+        btn.disabled = false;
+        btn.textContent = t("login.signin");
+      }
+    });
+  </script>
+</body>
+</html>

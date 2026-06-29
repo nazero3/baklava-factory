@@ -54,6 +54,12 @@ def test_end_to_end_mvp_flow():
         json={"code": "FG-BAKLAVA", "name": "Baklava Classic", "category": "finished"},
         headers=headers,
     ).json()
+    duplicate_product = client.post(
+        "/products",
+        json={"code": "FG-BAKLAVA", "name": "Baklava Duplicate", "category": "finished"},
+        headers=headers,
+    )
+    assert duplicate_product.status_code == 409
 
     recipe_payload = {
         "finished_product_id": baklava["id"],

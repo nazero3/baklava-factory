@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en" data-i18n-doctitle="dash.title">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — Baklava Factory</title>
+  <script>(function(){var l=localStorage.getItem('baklava_lang')||'en';document.documentElement.lang=l;document.documentElement.dir=l==='ar'?'rtl':'ltr';})();</script>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <header id="app-nav" class="app-nav"></header>
+
+  <main class="app-main wide">
+    <div class="page-header" style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+      <div>
+        <h1 data-i18n="dash.title">Dashboard</h1>
+        <p data-i18n="dash.subtitle">Live overview of factory operations</p>
+      </div>
+      <button type="button" class="btn-secondary btn-sm" id="refresh-btn" data-i18n="common.refresh">Refresh</button>
+    </div>
+
+    <div id="kpi-grid" class="kpi-grid"></div>
+
+    <div class="dash-cols">
+      <div class="card">
+        <h2 data-i18n="dash.alerts.title">Alerts</h2>
+        <div id="alerts"></div>
+      </div>
+      <div class="card">
+        <h2 data-i18n="dash.activity.title">Recent activity</h2>
+        <div id="activity"></div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/static/js/i18n.js"></script>
+  <script src="/static/js/auth_client.js"></script>
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/components.js"></script>
+  <script src="/static/js/shell.js"></script>
+  <script>
+    BaklavaShell.initShell("dashboard");
+    const C = BaklavaComponents;
+    const t = (k) => BaklavaI18n.t(k);
+
+    const kpiGrid = document.getElementById("kpi-grid");
+    const alertsEl = document.getElementById("alerts");
+    const activityEl = document.getElementById("activity");
+
+    function renderKpis(s) {
+      C.renderKpis(kpiGrid, [
+        { label: t("dash.kpi.inventory_value"), value: C.fmtMoney(s.inventory_value), tone: "money" },
+        { label: t("dash.kpi.raw_stock"), value: C.fmtNum(s.raw_stock_kg) + " kg" },
+        { label: t("dash.kpi.finished_stock"), value: C.fmtNum(s.finished_stock_kg) + " kg" },
+        { label: t("dash.kpi.produced"), value: C.fmtNum(s.produced_kg) + " kg" },
+        { label: t("dash.kpi.sales"), value: C.fmtNum(s.sales_kg) + " kg" },
+        { label: t("dash.kpi.waste"), value: C.fmtNum(s.waste_kg) + " kg", tone: s.waste_kg > 0 ? "warn" : undefined },
+        { label: t("dash.kpi.pending_approvals"), value: C.fmtNum(s.pending_approvals.total, 0), tone: s.pending_approvals.total > 0 ? "err" : "ok" },
+        { label: t("dash.kpi.low_stock"), value: C.fmtNum(s.low_stock_count, 0), tone: s.low_stock_count > 0 ? "warn" : "ok" },
+      ]);
+    }
+
+    function renderAlerts(s) {
+      const items = [];
+      if (s.pending_approvals.total > 0) {
+        items.push(
+          `<div class="alert alert-info">${C.fmtNum(s.pending_approvals.total, 0)} ${t("dash.alerts.approvals_pending")}</div>`
+        );
+      }
+      (s.low_stock || []).forEach((p) => {
+        items.push(
+          `<div class="alert alert-warn">${t("dash.alerts.low_stock")}: ${C.escapeHtml(p.name)} (${C.escapeHtml(p.code)}) — ${C.fmtNum(p.quantity_kg)} / ${C.fmtNum(p.reorder_level)} kg</div>`
+        );
+      });
+      alertsEl.innerHTML = items.length
+        ? items.join("")
+        : `<div class="alert alert-ok">${t("dash.alerts.none")}</div>`;
+    }
+
+    function renderActivity(s) {
+      const events = s.recent_activity || [];
+      if (!events.length) {
+        activityEl.innerHTML = `<p class="help">${t("dash.activity.none")}</p>`;
+        return;
+      }
+      activityEl.innerHTML = events
+        .map((e) => {
+          const typeLabel = t("type." + e.type, e.type);
+          const detail = e.detail ? ` · ${C.escapeHtml(e.detail)}` : "";
+          return `<div class="activity-item">
+            <span class="activity-main"><span class="activity-type">${C.escapeHtml(typeLabel)}</span>${C.escapeHtml(e.product)} — ${C.fmtNum(e.qty_kg)} kg${detail}</span>
+            <span class="activity-meta">${C.fmtDate(e.created_at)}</span>
+          </div>`;
+        })
+        .join("");
+    }
+
+    async function load() {
+      try {
+        const s = await BaklavaApi.get("/dashboard/daily-summary");
+        renderKpis(s);
+        renderAlerts(s);
+        renderActivity(s);
+      } catch (err) {
+        kpiGrid.innerHTML = "";
+        alertsEl.innerHTML = `<div class="alert alert-warn">${C.escapeHtml(err.message)}</div>`;
+        activityEl.innerHTML = "";
+      }
+    }
+
+    document.getElementById("refresh-btn").addEventListener("click", load);
+    load();
+  </script>
+</body>
+</html>

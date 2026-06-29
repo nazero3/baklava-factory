@@ -1,0 +1,23 @@
+<style>
+.kpi {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.kpi .box {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px;
+}
+.kpi .name { color: var(--muted); font-size: 12px; }
+.kpi .val { font-size: 22px; font-weight: 700; margin-top: 2px; }
+</style>
+<div class="kpi">
+  <div class="box"><div class="name">Raw Stock (kg)</div><div class="val">0</div></div>
+  <div class="box"><div class="name">Finished Stock (kg)</div><div class="val">0</div></div>
+  <div class="box"><div class="name">Produced (kg)</div><div class="val">0</div></div>
+  <div class="box"><div class="name">Waste (kg)</div><div class="val">0</div></div>
+  <div class="box"><div class="name">Sales (kg)</div><div class="val">0</div></div>
+</div>

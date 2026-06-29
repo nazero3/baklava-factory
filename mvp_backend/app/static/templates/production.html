@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en" data-i18n-doctitle="prod.title">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Production — Baklava Factory</title>
+  <script>(function(){var l=localStorage.getItem('baklava_lang')||'en';document.documentElement.lang=l;document.documentElement.dir=l==='ar'?'rtl':'ltr';})();</script>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <header id="app-nav" class="app-nav"></header>
+
+  <main class="app-main">
+    <div class="page-header">
+      <h1 data-i18n="prod.title">Production</h1>
+      <p data-i18n="prod.subtitle">Consume raw materials per recipe and add finished goods to factory stock.</p>
+    </div>
+
+    <div class="card">
+      <form id="production-form">
+        <div class="field">
+          <label for="finished_id" data-i18n="recipes.finished">Finished product</label>
+          <select id="finished_id" required></select>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label for="target_kg" data-i18n="prod.target_kg">Target (kg)</label>
+            <input id="target_kg" type="number" step="0.001" min="0.001" value="10" required />
+          </div>
+          <div class="field">
+            <label for="actual_kg" data-i18n="prod.actual_kg">Actual output (kg)</label>
+            <input id="actual_kg" type="number" step="0.001" min="0.001" value="10" required />
+          </div>
+        </div>
+        <div class="field">
+          <label for="waste_kg" data-i18n="prod.waste_kg">Waste (kg)</label>
+          <input id="waste_kg" type="number" step="0.001" min="0" value="0.2" />
+        </div>
+        <button type="submit" data-i18n="prod.run">Complete batch</button>
+      </form>
+      <div id="toast" class="toast"></div>
+      <div id="result" class="result-box"></div>
+    </div>
+
+    <div class="card section-gap">
+      <h2 data-i18n="prod.recent">Recent batches</h2>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th data-i18n="common.id">ID</th>
+              <th data-i18n="recipes.finished">Finished product</th>
+              <th data-i18n="prod.target_kg">Target (kg)</th>
+              <th data-i18n="prod.actual_kg">Actual (kg)</th>
+              <th data-i18n="prod.waste_kg">Waste (kg)</th>
+              <th data-i18n="common.created_at">Created</th>
+            </tr>
+          </thead>
+          <tbody id="batch-tbody">
+            <tr><td colspan="6" class="empty" data-i18n="common.loading">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="/static/js/i18n.js"></script>
+  <script src="/static/js/auth_client.js"></script>
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/components.js"></script>
+  <script src="/static/js/shell.js"></script>
+  <script>
+    BaklavaShell.initShell("production");
+    const C = BaklavaComponents;
+    const t = (k) => BaklavaI18n.t(k);
+    const toast = document.getElementById("toast");
+    const result = document.getElementById("result");
+    const tbody = document.getElementById("batch-tbody");
+
+    async function loadOptions() {
+      try {
+        await C.populateProductSelect(document.getElementById("finished_id"), {
+          category: "finished",
+          selected: localStorage.getItem("baklava_last_finished_product_id"),
+        });
+      } catch (err) {
+        C.toast(toast, err.message, false);
+      }
+    }
+
+    async function loadBatches() {
+      try {
+        const rows = await BaklavaApi.get("/production/batches");
+        C.renderRows(
+          tbody,
+          rows,
+          [
+            { render: (b) => C.escapeHtml(b.id) },
+            { render: (b) => C.escapeHtml(b.finished_name || b.finished_product_id) },
+            { render: (b) => C.fmtNum(b.target_kg) },
+            { render: (b) => C.fmtNum(b.actual_kg) },
+            { render: (b) => C.fmtNum(b.waste_kg) },
+            { render: (b) => C.fmtDate(b.created_at) },
+          ],
+          t("prod.empty"),
+          6
+        );
+      } catch (err) {
+        C.renderRows(tbody, [], new Array(6).fill({}), err.message, 6);
+      }
+    }
+
+    document.getElementById("production-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const finishedId = Number(document.getElementById("finished_id").value);
+      if (!finishedId) {
+        C.toast(toast, t("common.required"), false);
+        return;
+      }
+      const body = {
+        finished_product_id: finishedId,
+        target_kg: Number(document.getElementById("target_kg").value),
+        actual_kg: Number(document.getElementById("actual_kg").value),
+        waste_kg: Number(document.getElementById("waste_kg").value) || 0,
+      };
+      try {
+        const data = await BaklavaApi.post("/production/batches/complete", body);
+        C.toast(toast, `${t("prod.done")} (ID ${data.batch_id})`, true);
+        const consumed = (data.consumed || [])
+          .map((c) => `#${c.ingredient_product_id}: ${C.fmtNum(c.qty_kg)} kg`)
+          .join(", ");
+        C.renderResult(result, [
+          { label: t("common.id"), value: data.batch_id },
+          { label: t("prod.consumed"), value: consumed },
+        ]);
+        await loadBatches();
+      } catch (err) {
+        C.toast(toast, err.message, false);
+        C.clearResult(result);
+      }
+    });
+
+    loadOptions();
+    loadBatches();
+  </script>
+</body>
+</html>

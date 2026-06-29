@@ -1,15 +1,23 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-
-DATABASE_URL = "sqlite:///./mvp.db"
+from .config import settings
 
 
 class Base(DeclarativeBase):
     pass
 
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+def _sqlite_connect_args(url: str) -> dict:
+    if url.startswith("sqlite"):
+        return {"check_same_thread": False}
+    return {}
+
+
+engine = create_engine(
+    settings.database_url,
+    connect_args=_sqlite_connect_args(settings.database_url),
+)
 SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 

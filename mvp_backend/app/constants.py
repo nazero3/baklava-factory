@@ -1,0 +1,1 @@
+FACTORY_LOCATION_ID: int = 0

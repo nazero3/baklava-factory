@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en" data-i18n-doctitle="disp.title">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dispatch — Baklava Factory</title>
+  <script>(function(){var l=localStorage.getItem('baklava_lang')||'en';document.documentElement.lang=l;document.documentElement.dir=l==='ar'?'rtl':'ltr';})();</script>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <header id="app-nav" class="app-nav"></header>
+
+  <main class="app-main">
+    <div class="page-header">
+      <h1 data-i18n="disp.title">Dispatch Transfer</h1>
+      <p data-i18n="disp.subtitle">Send finished goods from the warehouse to a store.</p>
+    </div>
+
+    <div class="card">
+      <form id="dispatch-form">
+        <div class="grid2">
+          <div class="field">
+            <label for="product_id" data-i18n="common.product">Product</label>
+            <select id="product_id" required></select>
+          </div>
+          <div class="field">
+            <label for="to_store_id" data-i18n="disp.to_store">Destination store</label>
+            <select id="to_store_id" required></select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="qty_kg" data-i18n="common.qty_kg">Quantity (kg)</label>
+          <input id="qty_kg" name="qty_kg" type="number" step="0.001" min="0.001" value="5" required />
+        </div>
+        <button type="submit" data-i18n="disp.dispatch">Dispatch transfer</button>
+      </form>
+      <div id="toast" class="toast"></div>
+      <div id="result" class="result-box"></div>
+    </div>
+
+    <div class="page-header" style="margin-top: 32px;">
+      <h1 data-i18n="disp.receive_title">Receive Transfer</h1>
+      <p data-i18n="disp.receive_subtitle">Confirm goods arrived at the store.</p>
+    </div>
+
+    <div class="card">
+      <form id="receive-form">
+        <div class="grid2">
+          <div class="field">
+            <label for="transfer_id" data-i18n="disp.transfer">Transfer</label>
+            <select id="transfer_id" required></select>
+          </div>
+          <div class="field">
+            <label for="received_qty_kg" data-i18n="disp.received_qty">Received qty (kg)</label>
+            <input id="received_qty_kg" name="received_qty_kg" type="number" step="0.001" min="0.001" value="5" required />
+          </div>
+        </div>
+        <button type="submit" data-i18n="disp.confirm">Confirm receipt</button>
+      </form>
+      <div id="receive-toast" class="toast"></div>
+      <div id="receive-result" class="result-box"></div>
+    </div>
+
+    <div class="card section-gap">
+      <h2 data-i18n="disp.recent">Recent transfers</h2>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th data-i18n="common.id">ID</th>
+              <th data-i18n="common.product">Product</th>
+              <th data-i18n="common.store">Store</th>
+              <th data-i18n="common.qty_kg">Qty (kg)</th>
+              <th data-i18n="common.status">Status</th>
+              <th data-i18n="common.created_at">Created</th>
+            </tr>
+          </thead>
+          <tbody id="transfer-tbody">
+            <tr><td colspan="6" class="empty" data-i18n="common.loading">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="/static/js/i18n.js"></script>
+  <script src="/static/js/auth_client.js"></script>
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/components.js"></script>
+  <script src="/static/js/shell.js"></script>
+  <script>
+    BaklavaShell.initShell("dispatch");
+    const C = BaklavaComponents;
+    const t = (k) => BaklavaI18n.t(k);
+    const transferSelect = document.getElementById("transfer_id");
+    const transferTbody = document.getElementById("transfer-tbody");
+    let transfersCache = [];
+
+    function fillTransferSelect() {
+      const dispatched = transfersCache.filter((tr) => tr.status === "dispatched");
+      C.fillSelect(transferSelect, dispatched, {
+        value: "id",
+        label: (tr) => `#${tr.id} — ${tr.product_name || tr.product_id} → ${tr.to_store_name || tr.to_store_id} (${C.fmtNum(tr.qty_kg)} kg)`,
+        selected: localStorage.getItem("baklava_last_transfer_id"),
+      });
+    }
+
+    transferSelect.addEventListener("change", () => {
+      const tr = transfersCache.find((x) => String(x.id) === transferSelect.value);
+      if (tr) document.getElementById("received_qty_kg").value = tr.qty_kg;
+    });
+
+    async function loadOptions() {
+      try {
+        await C.populateProductSelect(document.getElementById("product_id"), {
+          category: "finished",
+          selected: localStorage.getItem("baklava_last_finished_product_id"),
+        });
+        await C.populateStoreSelect(document.getElementById("to_store_id"), {
+          selected: localStorage.getItem("baklava_last_store_id"),
+        });
+      } catch (err) {
+        C.toast(document.getElementById("toast"), err.message, false);
+      }
+    }
+
+    async function loadTransfers() {
+      try {
+        transfersCache = await BaklavaApi.get("/transfers");
+        fillTransferSelect();
+        C.renderRows(
+          transferTbody,
+          transfersCache,
+          [
+            { render: (r) => C.escapeHtml(r.id) },
+            { render: (r) => C.escapeHtml(r.product_name || r.product_id) },
+            { render: (r) => C.escapeHtml(r.to_store_name || r.to_store_id) },
+            { render: (r) => C.fmtNum(r.qty_kg) },
+            { render: (r) => C.statusBadge(r.status) },
+            { render: (r) => C.fmtDate(r.created_at) },
+          ],
+          t("disp.empty"),
+          6
+        );
+      } catch (err) {
+        C.renderRows(transferTbody, [], new Array(6).fill({}), err.message, 6);
+      }
+    }
+
+    document.getElementById("dispatch-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const toast = document.getElementById("toast");
+      const result = document.getElementById("result");
+      const body = {
+        product_id: Number(document.getElementById("product_id").value),
+        qty_kg: Number(document.getElementById("qty_kg").value),
+        to_store_id: Number(document.getElementById("to_store_id").value),
+      };
+      if (!body.product_id || !body.to_store_id) {
+        C.toast(toast, t("common.required"), false);
+        return;
+      }
+      try {
+        const data = await BaklavaApi.post("/transfers/dispatch", body);
+        C.toast(toast, `${t("disp.dispatched")} (ID ${data.id})`, true);
+        localStorage.setItem("baklava_last_finished_product_id", body.product_id);
+        localStorage.setItem("baklava_last_store_id", body.to_store_id);
+        localStorage.setItem("baklava_last_transfer_id", data.id);
+        C.renderResult(result, [
+          { label: t("common.id"), value: data.id },
+          { label: t("common.qty_kg"), value: C.fmtNum(data.qty_kg) },
+          { label: t("common.status"), value: data.status },
+        ]);
+        document.getElementById("received_qty_kg").value = body.qty_kg;
+        await loadTransfers();
+      } catch (err) {
+        C.toast(toast, err.message, false);
+        C.clearResult(result);
+      }
+    });
+
+    document.getElementById("receive-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const toast = document.getElementById("receive-toast");
+      const result = document.getElementById("receive-result");
+      const transferId = Number(transferSelect.value);
+      const received_qty_kg = Number(document.getElementById("received_qty_kg").value);
+      if (!transferId) {
+        C.toast(toast, t("common.required"), false);
+        return;
+      }
+      try {
+        const data = await BaklavaApi.post(`/transfers/${transferId}/receive`, { received_qty_kg });
+        C.toast(toast, `${t("disp.received")} (ID ${data.id})`, true);
+        C.renderResult(result, [
+          { label: t("common.id"), value: data.id },
+          { label: t("common.status"), value: data.status },
+        ]);
+        await loadTransfers();
+      } catch (err) {
+        C.toast(toast, err.message, false);
+        C.clearResult(result);
+      }
+    });
+
+    loadOptions();
+    loadTransfers();
+  </script>
+</body>
+</html>

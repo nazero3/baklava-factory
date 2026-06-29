@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en" data-i18n-doctitle="suppliers.title">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Suppliers — Baklava Factory</title>
+  <script>(function(){var l=localStorage.getItem('baklava_lang')||'en';document.documentElement.lang=l;document.documentElement.dir=l==='ar'?'rtl':'ltr';})();</script>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <header id="app-nav" class="app-nav"></header>
+
+  <main class="app-main">
+    <div class="page-header">
+      <h1 data-i18n="suppliers.title">Suppliers</h1>
+      <p data-i18n="suppliers.subtitle">Register suppliers you buy raw materials from.</p>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="suppliers.add">Add supplier</h2>
+      <form id="supplier-form">
+        <div class="field">
+          <label for="name" data-i18n="suppliers.name">Supplier name</label>
+          <input id="name" name="name" type="text" placeholder="Golden Nuts Supplier" required minlength="2" />
+        </div>
+        <button type="submit" data-i18n="common.create">Create</button>
+      </form>
+      <div id="toast" class="toast"></div>
+    </div>
+
+    <div class="card section-gap">
+      <h2 data-i18n="suppliers.list">Supplier list</h2>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th data-i18n="common.id">ID</th>
+              <th data-i18n="common.name">Name</th>
+            </tr>
+          </thead>
+          <tbody id="supplier-tbody">
+            <tr><td colspan="2" class="empty" data-i18n="common.loading">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="/static/js/i18n.js"></script>
+  <script src="/static/js/auth_client.js"></script>
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/components.js"></script>
+  <script src="/static/js/shell.js"></script>
+  <script>
+    BaklavaShell.initShell("suppliers");
+    const C = BaklavaComponents;
+    const t = (k) => BaklavaI18n.t(k);
+    const form = document.getElementById("supplier-form");
+    const toast = document.getElementById("toast");
+    const tbody = document.getElementById("supplier-tbody");
+
+    async function loadSuppliers() {
+      try {
+        const rows = await BaklavaApi.get("/suppliers/list");
+        C.renderRows(
+          tbody,
+          rows,
+          [{ render: (r) => C.escapeHtml(r.id) }, { render: (r) => C.escapeHtml(r.name) }],
+          t("suppliers.empty"),
+          2
+        );
+      } catch (err) {
+        C.renderRows(tbody, [], [{}, {}], err.message, 2);
+      }
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("name").value.trim();
+      try {
+        const data = await BaklavaApi.post("/suppliers", { name });
+        C.toast(toast, `${t("suppliers.created")} (ID ${data.id})`, true);
+        localStorage.setItem("baklava_last_supplier_id", data.id);
+        document.getElementById("name").value = "";
+        await loadSuppliers();
+      } catch (err) {
+        C.toast(toast, err.message, false);
+      }
+    });
+
+    loadSuppliers();
+  </script>
+</body>
+</html>

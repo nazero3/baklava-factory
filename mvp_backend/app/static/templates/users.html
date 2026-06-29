@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en" data-i18n-doctitle="users.title">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Users — Baklava Factory</title>
+  <script>(function(){var l=localStorage.getItem('baklava_lang')||'en';document.documentElement.lang=l;document.documentElement.dir=l==='ar'?'rtl':'ltr';})();</script>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <header id="app-nav" class="app-nav"></header>
+
+  <main class="app-main">
+    <div class="page-header">
+      <h1 data-i18n="users.title">Users & Roles</h1>
+      <p data-i18n="users.subtitle">Create accounts and assign roles.</p>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="users.add">Add user</h2>
+      <form id="user-form">
+        <div class="grid2">
+          <div class="field">
+            <label for="username" data-i18n="users.username">Username</label>
+            <input id="username" type="text" minlength="3" required />
+          </div>
+          <div class="field">
+            <label for="full_name" data-i18n="users.full_name">Full name</label>
+            <input id="full_name" type="text" minlength="2" required />
+          </div>
+        </div>
+        <div class="grid2">
+          <div class="field">
+            <label for="password" data-i18n="users.password">Password</label>
+            <input id="password" type="password" minlength="6" required />
+          </div>
+          <div class="field">
+            <label for="role" data-i18n="users.role">Role</label>
+            <select id="role" required>
+              <option value="admin" data-i18n="role.admin">Administrator</option>
+              <option value="executive" data-i18n="role.executive">Executive</option>
+              <option value="factory_manager" data-i18n="role.factory_manager">Factory Manager</option>
+              <option value="warehouse" data-i18n="role.warehouse">Warehouse</option>
+              <option value="production_supervisor" data-i18n="role.production_supervisor">Production Supervisor</option>
+              <option value="store_manager" data-i18n="role.store_manager">Store Manager</option>
+              <option value="accountant" data-i18n="role.accountant">Accountant</option>
+            </select>
+          </div>
+        </div>
+        <button type="submit" data-i18n="common.create">Create</button>
+      </form>
+      <div id="toast" class="toast"></div>
+    </div>
+
+    <div class="card section-gap">
+      <h2 data-i18n="users.list">User list</h2>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th data-i18n="common.id">ID</th>
+              <th data-i18n="users.username">Username</th>
+              <th data-i18n="users.full_name">Full name</th>
+              <th data-i18n="users.role">Role</th>
+              <th data-i18n="users.active">Active</th>
+            </tr>
+          </thead>
+          <tbody id="user-tbody">
+            <tr><td colspan="5" class="empty" data-i18n="common.loading">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <script src="/static/js/i18n.js"></script>
+  <script src="/static/js/auth_client.js"></script>
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/components.js"></script>
+  <script src="/static/js/shell.js"></script>
+  <script>
+    BaklavaShell.initShell("users");
+    const C = BaklavaComponents;
+    const t = (k) => BaklavaI18n.t(k);
+    const toast = document.getElementById("toast");
+    const tbody = document.getElementById("user-tbody");
+
+    async function loadUsers() {
+      try {
+        const rows = await BaklavaApi.get("/auth/users");
+        C.renderRows(
+          tbody,
+          rows,
+          [
+            { render: (u) => C.escapeHtml(u.id) },
+            { render: (u) => C.escapeHtml(u.username) },
+            { render: (u) => C.escapeHtml(u.full_name) },
+            { render: (u) => t("role." + u.role, u.role) },
+            { render: (u) => (u.is_active ? "✓" : "—") },
+          ],
+          t("users.empty"),
+          5
+        );
+      } catch (err) {
+        C.renderRows(tbody, [], new Array(5).fill({}), err.message, 5);
+      }
+    }
+
+    document.getElementById("user-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const body = {
+        username: document.getElementById("username").value.trim(),
+        full_name: document.getElementById("full_name").value.trim(),
+        password: document.getElementById("password").value,
+        role: document.getElementById("role").value,
+      };
+      try {
+        const data = await BaklavaApi.post("/auth/users", body);
+        C.toast(toast, `${t("users.created")} (ID ${data.id})`, true);
+        document.getElementById("user-form").reset();
+        await loadUsers();
+      } catch (err) {
+        C.toast(toast, err.message, false);
+      }
+    });
+
+    loadUsers();
+  </script>
+</body>
+</html>

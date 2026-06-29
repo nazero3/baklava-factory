@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en" data-i18n-doctitle="reports.title">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reports — Baklava Factory</title>
+  <script>(function(){var l=localStorage.getItem('baklava_lang')||'en';document.documentElement.lang=l;document.documentElement.dir=l==='ar'?'rtl':'ltr';})();</script>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <header id="app-nav" class="app-nav"></header>
+
+  <main class="app-main wide">
+    <div class="page-header">
+      <h1 data-i18n="reports.title">Reports</h1>
+      <p data-i18n="reports.subtitle">Operational and financial summaries.</p>
+    </div>
+
+    <div class="card">
+      <div class="grid2">
+        <div class="field">
+          <label for="report_type" data-i18n="reports.type">Report</label>
+          <select id="report_type">
+            <option value="inventory-value" data-i18n="reports.inventory_value">Inventory value by category</option>
+            <option value="low-stock" data-i18n="reports.low_stock">Low-stock items</option>
+            <option value="transfer-exceptions" data-i18n="reports.transfer_exceptions">Transfer exceptions</option>
+            <option value="production-yield" data-i18n="reports.production_yield">Production yield & waste</option>
+          </select>
+        </div>
+        <div class="field" style="display:flex; align-items:flex-end; gap:8px;">
+          <button type="button" class="btn-primary" id="run-btn" data-i18n="reports.run">Run report</button>
+          <a class="btn-secondary btn-sm" id="export-products" href="/export/products-csv" data-i18n="common.export_csv">Export CSV</a>
+        </div>
+      </div>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead><tr id="report-head"></tr></thead>
+          <tbody id="report-tbody">
+            <tr><td class="empty" data-i18n="reports.empty">No data for this report.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div id="toast" class="toast"></div>
+  </main>
+
+  <script src="/static/js/i18n.js"></script>
+  <script src="/static/js/auth_client.js"></script>
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/components.js"></script>
+  <script src="/static/js/shell.js"></script>
+  <script>
+    BaklavaShell.initShell("reports");
+    const C = BaklavaComponents;
+    const t = (k) => BaklavaI18n.t(k);
+    const toast = document.getElementById("toast");
+    const head = document.getElementById("report-head");
+    const tbody = document.getElementById("report-tbody");
+
+    const SCHEMAS = {
+      "inventory-value": [
+        { key: "category", label: () => t("reports.category"), render: (r) => t("products.category." + r.category, r.category) },
+        { key: "total_qty_kg", label: () => t("reports.total_qty"), render: (r) => C.fmtNum(r.total_qty_kg) },
+        { key: "total_value", label: () => t("reports.total_value"), render: (r) => C.fmtMoney(r.total_value) },
+      ],
+      "low-stock": [
+        { label: () => t("common.code"), render: (r) => C.escapeHtml(r.code) },
+        { label: () => t("common.name"), render: (r) => C.escapeHtml(r.name) },
+        { label: () => t("common.qty_kg"), render: (r) => C.fmtNum(r.quantity_kg) },
+        { label: () => t("products.reorder_level"), render: (r) => C.fmtNum(r.reorder_level) },
+      ],
+      "transfer-exceptions": [
+        { label: () => t("common.id"), render: (r) => C.escapeHtml(r.id) },
+        { label: () => t("disp.transfer"), render: (r) => "#" + C.escapeHtml(r.transfer_id) },
+        { label: () => t("appr.expected"), render: (r) => C.fmtNum(r.expected_qty_kg) },
+        { label: () => t("appr.received"), render: (r) => C.fmtNum(r.received_qty_kg) },
+        { label: () => t("appr.difference"), render: (r) => C.fmtNum(r.difference_qty_kg) },
+        { label: () => t("common.status"), render: (r) => C.statusBadge(r.status) },
+      ],
+      "production-yield": [
+        { label: () => t("common.id"), render: (r) => C.escapeHtml(r.batch_id) },
+        { label: () => t("common.product"), render: (r) => C.escapeHtml(r.product) },
+        { label: () => t("prod.target_kg"), render: (r) => C.fmtNum(r.target_kg) },
+        { label: () => t("prod.actual_kg"), render: (r) => C.fmtNum(r.actual_kg) },
+        { label: () => t("prod.waste_kg"), render: (r) => C.fmtNum(r.waste_kg) },
+        { label: () => t("reports.yield_pct"), render: (r) => C.fmtNum(r.yield_pct, 1) },
+      ],
+    };
+
+    async function run() {
+      const type = document.getElementById("report_type").value;
+      const cols = SCHEMAS[type];
+      head.innerHTML = cols.map((c) => `<th>${C.escapeHtml(c.label())}</th>`).join("");
+      try {
+        const data = await BaklavaApi.get(`/reports/${type}`);
+        C.renderRows(tbody, data.rows, cols, t("reports.empty"), cols.length);
+      } catch (err) {
+        C.renderRows(tbody, [], cols, err.message, cols.length);
+      }
+    }
+
+    document.getElementById("run-btn").addEventListener("click", run);
+    document.getElementById("export-products").addEventListener("click", (e) => {
+      // CSV endpoints require auth header; fetch as blob then download.
+      e.preventDefault();
+      downloadCsv("/export/products-csv", "products.csv");
+    });
+
+    async function downloadCsv(path, filename) {
+      try {
+        const token = BaklavaAuth.getAccessToken();
+        const res = await fetch(path, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (err) {
+        C.toast(toast, err.message, false);
+      }
+    }
+
+    run();
+  </script>
+</body>
+</html>

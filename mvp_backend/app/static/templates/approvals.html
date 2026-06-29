@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en" data-i18n-doctitle="appr.title">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Approvals — Baklava Factory</title>
+  <script>(function(){var l=localStorage.getItem('baklava_lang')||'en';document.documentElement.lang=l;document.documentElement.dir=l==='ar'?'rtl':'ltr';})();</script>
+  <link rel="stylesheet" href="/static/css/app.css" />
+</head>
+<body>
+  <header id="app-nav" class="app-nav"></header>
+
+  <main class="app-main wide">
+    <div class="page-header">
+      <h1 data-i18n="appr.title">Approvals</h1>
+      <p data-i18n="appr.subtitle">Review pending inventory adjustments and transfer exceptions.</p>
+    </div>
+
+    <div class="card">
+      <h2 data-i18n="appr.adjustments">Inventory adjustments</h2>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th data-i18n="common.id">ID</th>
+              <th data-i18n="common.product">Product</th>
+              <th data-i18n="inv.location">Location</th>
+              <th data-i18n="appr.delta">Delta (kg)</th>
+              <th data-i18n="common.reason">Reason</th>
+              <th data-i18n="common.status">Status</th>
+              <th data-i18n="common.actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="adj-tbody">
+            <tr><td colspan="7" class="empty" data-i18n="common.loading">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card section-gap">
+      <h2 data-i18n="appr.exceptions">Transfer exceptions</h2>
+      <div class="data-table-wrap">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th data-i18n="common.id">ID</th>
+              <th data-i18n="disp.transfer">Transfer</th>
+              <th data-i18n="appr.expected">Expected</th>
+              <th data-i18n="appr.received">Received</th>
+              <th data-i18n="appr.difference">Difference</th>
+              <th data-i18n="common.status">Status</th>
+              <th data-i18n="common.actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="exc-tbody">
+            <tr><td colspan="7" class="empty" data-i18n="common.loading">Loading…</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div id="toast" class="toast"></div>
+  </main>
+
+  <script src="/static/js/i18n.js"></script>
+  <script src="/static/js/auth_client.js"></script>
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/components.js"></script>
+  <script src="/static/js/shell.js"></script>
+  <script>
+    BaklavaShell.initShell("approvals");
+    const C = BaklavaComponents;
+    const t = (k) => BaklavaI18n.t(k);
+    const toast = document.getElementById("toast");
+    const adjTbody = document.getElementById("adj-tbody");
+    const excTbody = document.getElementById("exc-tbody");
+
+    function actionButtons(item) {
+      if (item.status !== "pending") return C.statusBadge(item.status);
+      return `<div class="row-actions">
+        <button class="btn-sm btn-approve" data-act="approve" data-id="${item.id}">${t("common.approve")}</button>
+        <button class="btn-sm btn-reject" data-act="reject" data-id="${item.id}">${t("common.reject")}</button>
+      </div>`;
+    }
+
+    async function loadAdjustments() {
+      try {
+        const rows = await BaklavaApi.get("/inventory/adjustments");
+        C.renderRows(
+          adjTbody,
+          rows,
+          [
+            { render: (r) => C.escapeHtml(r.id) },
+            { render: (r) => C.escapeHtml(r.product_name || r.product_id) },
+            { render: (r) => C.escapeHtml(r.location_type === "factory" ? t("inv.factory") : `#${r.location_id}`) },
+            { render: (r) => C.fmtNum(r.qty_delta_kg) },
+            { render: (r) => C.escapeHtml(r.reason) },
+            { render: (r) => C.statusBadge(r.status) },
+            { render: (r) => actionButtons(r) },
+          ],
+          t("appr.empty_adj"),
+          7
+        );
+      } catch (err) {
+        C.renderRows(adjTbody, [], new Array(7).fill({}), err.message, 7);
+      }
+    }
+
+    async function loadExceptions() {
+      try {
+        const rows = await BaklavaApi.get("/transfer-exceptions");
+        C.renderRows(
+          excTbody,
+          rows,
+          [
+            { render: (r) => C.escapeHtml(r.id) },
+            { render: (r) => "#" + C.escapeHtml(r.transfer_id) },
+            { render: (r) => C.fmtNum(r.expected_qty_kg) },
+            { render: (r) => C.fmtNum(r.received_qty_kg) },
+            { render: (r) => C.fmtNum(r.difference_qty_kg) },
+            { render: (r) => C.statusBadge(r.status) },
+            { render: (r) => actionButtons(r) },
+          ],
+          t("appr.empty_exc"),
+          7
+        );
+      } catch (err) {
+        C.renderRows(excTbody, [], new Array(7).fill({}), err.message, 7);
+      }
+    }
+
+    async function act(kind, id, action) {
+      const base = kind === "adj" ? "/inventory/adjustments" : "/transfer-exceptions";
+      try {
+        await BaklavaApi.post(`${base}/${id}/${action}`, {});
+        C.toast(toast, action === "approve" ? t("appr.approved") : t("appr.rejected"), true);
+        await (kind === "adj" ? loadAdjustments() : loadExceptions());
+      } catch (err) {
+        C.toast(toast, err.message, false);
+      }
+    }
+
+    adjTbody.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-act]");
+      if (btn) act("adj", btn.dataset.id, btn.dataset.act);
+    });
+    excTbody.addEventListener("click", (e) => {
+      const btn = e.target.closest("button[data-act]");
+      if (btn) act("exc", btn.dataset.id, btn.dataset.act);
+    });
+
+    loadAdjustments();
+    loadExceptions();
+  </script>
+</body>
+</html>
