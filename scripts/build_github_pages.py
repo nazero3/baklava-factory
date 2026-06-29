@@ -2,13 +2,17 @@
 """Build a static GitHub Pages preview of the ERP web UI."""
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
-BASE_PATH = "/manbaj-factory"
 REPO_ROOT = Path(__file__).resolve().parents[1]
 STATIC_ROOT = REPO_ROOT / "mvp_backend" / "app" / "static"
 OUT_DIR = REPO_ROOT / "github-pages"
+
+# Project Pages URL: https://<user>.github.io/<repo-name>/
+_REPO_NAME = os.environ.get("GITHUB_REPOSITORY", "nazero3/baklava-factory").rsplit("/", 1)[-1]
+BASE_PATH = f"/{_REPO_NAME}"
 
 ROUTE_TO_FILE = {
     "/": "login.html",
