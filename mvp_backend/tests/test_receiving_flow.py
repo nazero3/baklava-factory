@@ -4,23 +4,7 @@ Covers both happy path (successful receipt) and error paths (validation errors).
 """
 from typing import Any
 
-import pytest
 from fastapi.testclient import TestClient
-
-
-# Receiving tests: request receiving_supplier, receiving_raw_product, receiving_headers, client fixtures.
-
-
-@pytest.fixture
-def supplier_fixture(receiving_supplier):
-    """Return the supplier fixture."""
-    return receiving_supplier
-
-
-@pytest.fixture
-def product_fixture(receiving_raw_product):
-    """Return the product fixture."""
-    return receiving_raw_product
 
 
 class TestReceivingHappyPath:
@@ -31,22 +15,22 @@ class TestReceivingHappyPath:
         client: TestClient,
         receiving_supplier: Any,
         receiving_raw_product: Any,
-        receiving_headers: dict[str, str]
+        receiving_headers: dict[str, str],
     ):
         """Happy path: receive raw material with valid positive qty."""
         payload = {
-            "supplier_id": str(receiving_supplier.id),
-            "product_code": receiving_raw_product.code,
+            "supplier_id": receiving_supplier.id,
+            "product_id": receiving_raw_product.id,
             "qty_kg": 150.0,
-            "location": "WH-A1",
+            "unit_cost": 2.5,
+            "lot_no": "LOT-A1",
         }
 
         response = client.post("/receivings", json=payload, headers=receiving_headers)
         assert response.status_code == 200
         data = response.json()
         assert "id" in data
-        assert "product_code" in data
-        assert "qty_kg" in data
+        assert data["product_id"] == receiving_raw_product.id
         assert data["qty_kg"] == 150.0
 
     def test_receiving_with_minimal_payload(
@@ -54,13 +38,14 @@ class TestReceivingHappyPath:
         client: TestClient,
         receiving_supplier: Any,
         receiving_raw_product: Any,
-        receiving_headers: dict[str, str]
+        receiving_headers: dict[str, str],
     ):
-        """Happy path: receive with just required fields."""
+        """Happy path: receive with required fields only."""
         payload = {
-            "supplier_id": str(receiving_supplier.id),
-            "product_code": receiving_raw_product.code,
+            "supplier_id": receiving_supplier.id,
+            "product_id": receiving_raw_product.id,
             "qty_kg": 75.5,
+            "unit_cost": 1.0,
         }
 
         response = client.post("/receivings", json=payload, headers=receiving_headers)
@@ -75,112 +60,88 @@ class TestReceivingErrorPaths:
     def test_receiving_rejects_negative_qty(
         self,
         client: TestClient,
-        receiving_headers: dict[str, str]
+        receiving_supplier: Any,
+        receiving_raw_product: Any,
+        receiving_headers: dict[str, str],
     ):
-        """Error path: qty_kg < 0 should return 422/400 with clear error."""
+        """Error path: qty_kg < 0 should return 422."""
         payload = {
-            "supplier_id": "urn:test-supplier-123",
-            "product_code": "RM-BAD-QTY",
+            "supplier_id": receiving_supplier.id,
+            "product_id": receiving_raw_product.id,
             "qty_kg": -5.0,
+            "unit_cost": 1.0,
         }
 
         response = client.post("/receivings", json=payload, headers=receiving_headers)
-        assert response.status_code in (400, 422)
-        data = response.json()
-        # Assert the error is documented in detail or message field
-        if "detail" in data:
-            assert any("qty_kg" in str(err) and ("negative" in str(err).lower() or "invalid" in str(err).lower())
-                       for err in data["detail"]) or "qty_kg" in str(data.get("detail", ""))
-        elif "message" in data:
-            assert "qty_kg" in str(data["message"]).lower() or "qty_kg" in data["message"]
+        assert response.status_code == 422
 
     def test_receiving_rejects_zero_qty(
         self,
         client: TestClient,
-        receiving_headers: dict[str, str]
+        receiving_supplier: Any,
+        receiving_raw_product: Any,
+        receiving_headers: dict[str, str],
     ):
         """Error path: qty_kg == 0 should be rejected."""
         payload = {
-            "supplier_id": "urn:test-supplier-456",
-            "product_code": "RM-ZERO-QTY",
+            "supplier_id": receiving_supplier.id,
+            "product_id": receiving_raw_product.id,
             "qty_kg": 0,
+            "unit_cost": 1.0,
         }
 
         response = client.post("/receivings", json=payload, headers=receiving_headers)
-        assert response.status_code in (400, 422)
-        data = response.json()
-        # Verify error mentions qty_kg being invalid/required/greater than zero
-        error_msg = str(data.get("detail", [])).lower() if isinstance(data.get("detail"), list) else str(data.get("detail", "")).lower()
-        assert "qty_kg" in error_msg or any(
-            kw in str(data.get("message", "")).lower() for kw in ["invalid", "required", "zero", "non-positive"]
-        )
+        assert response.status_code == 422
 
     def test_receiving_rejects_missing_product(
         self,
         client: TestClient,
         receiving_supplier: Any,
-        receiving_headers: dict[str, str]
+        receiving_headers: dict[str, str],
     ):
-        """Error path: non-existent product code should fail."""
+        """Error path: non-existent product ID should fail."""
         payload = {
-            "supplier_id": str(receiving_supplier.id),
-            "product_code": "RM-NONEXISTENT-12345",
+            "supplier_id": receiving_supplier.id,
+            "product_id": 999999,
             "qty_kg": 100.0,
+            "unit_cost": 1.0,
         }
 
-        response = client.post("/api/receivings", json=payload, headers=receiving_headers)
-        assert response.status_code in (400, 422)
-        # Check for product not found or invalid error message
-        data = response.json()
-        detail = data.get("detail") if isinstance(data.get("detail"), list) else data.get("detail")
-        if isinstance(detail, list):
-            assert any("product" in str(e).lower() for e in detail)
-        elif detail:
-            assert "product" in str(detail).lower()
+        response = client.post("/receivings", json=payload, headers=receiving_headers)
+        assert response.status_code == 404
+        assert "product" in response.json()["detail"].lower()
 
     def test_receiving_rejects_missing_supplier(
         self,
         client: TestClient,
-        receiving_headers: dict[str, str]
+        receiving_raw_product: Any,
+        receiving_headers: dict[str, str],
     ):
         """Error path: non-existent supplier ID should fail."""
         payload = {
-            "supplier_id": "urn:test-supplier-INVALID",
-            "product_code": "RM-TEST",
+            "supplier_id": 999999,
+            "product_id": receiving_raw_product.id,
             "qty_kg": 100.0,
+            "unit_cost": 1.0,
         }
 
         response = client.post("/receivings", json=payload, headers=receiving_headers)
-        assert response.status_code in (400, 422)
-        # Verify supplier not found error is returned
-        data = response.json()
-        if "detail" in data:
-            detail = data["detail"]
-            if isinstance(detail, list):
-                assert any("supplier" in str(e).lower() for e in detail)
-            else:
-                assert "supplier" in detail.lower()
+        assert response.status_code == 404
+        assert "supplier" in response.json()["detail"].lower()
 
     def test_receiving_rejects_missing_qty(
         self,
         client: TestClient,
         receiving_supplier: Any,
         receiving_raw_product: Any,
-        receiving_headers: dict[str, str]
+        receiving_headers: dict[str, str],
     ):
         """Error path: missing qty_kg field should fail validation."""
         payload = {
-            "supplier_id": str(receiving_supplier.id),
-            "product_code": receiving_raw_product.code,
-            # Missing qty_kg intentionally
+            "supplier_id": receiving_supplier.id,
+            "product_id": receiving_raw_product.id,
+            "unit_cost": 1.0,
         }
 
-        response = client.post("/api/receivings", json=payload, headers=receiving_headers)
-        assert response.status_code in (400, 422)
-        data = response.json()
-        if "detail" in data:
-            detail = data["detail"]
-            if isinstance(detail, list):
-                assert any("qty_kg" in str(e).lower() or "required" in str(e).lower() for e in detail)
-            else:
-                assert "qty_kg" in detail.lower() or "required" in detail.lower()
+        response = client.post("/receivings", json=payload, headers=receiving_headers)
+        assert response.status_code == 422
